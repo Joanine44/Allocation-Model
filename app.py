@@ -23,10 +23,14 @@ def upload_file():
 
             df = pd.read_excel(file, engine="openpyxl")
 
-            # ✅ CORRECT DATE HANDLING (FIXED)
+            # ✅ ✅ FINAL DATE FIX (FORCE DD/MM/YYYY)
             for col in df.columns:
                 if "date" in col.lower():
-                    df[col] = pd.to_datetime(df[col], dayfirst=True, errors='coerce').dt.strftime("%Y/%m/%d")
+                    df[col] = pd.to_datetime(
+                        df[col].astype(str),
+                        format="%d/%m/%Y",
+                        errors='coerce'
+                    ).dt.strftime("%Y/%m/%d")
 
             total_records += len(df)
 
@@ -52,7 +56,7 @@ def upload_file():
                     prefix = match.group(1)
                     digits = match.group(2)
 
-                    # ✅ Fix O vs 0 only for 2-letter prefix
+                    # ✅ Fix O vs 0 ONLY for 2-letter prefix
                     if len(prefix) == 2 and digits.startswith("0"):
                         digits = "O" + digits[1:]
 
@@ -71,16 +75,24 @@ def upload_file():
         valid_df = pd.DataFrame(all_valid)
         suspense_df = pd.DataFrame(all_suspense)
 
-        # ✅ SAFE DATE FORMAT AGAIN (for outputs)
+        # ✅ ✅ APPLY DATE FIX AGAIN (OUTPUT SAFETY)
         for col in valid_df.columns:
             if "date" in col.lower():
-                valid_df[col] = pd.to_datetime(valid_df[col], dayfirst=True, errors='coerce').dt.strftime("%Y/%m/%d")
+                valid_df[col] = pd.to_datetime(
+                    valid_df[col].astype(str),
+                    format="%Y/%m/%d",
+                    errors='coerce'
+                ).dt.strftime("%Y/%m/%d")
 
         for col in suspense_df.columns:
             if "date" in col.lower():
-                suspense_df[col] = pd.to_datetime(suspense_df[col], dayfirst=True, errors='coerce').dt.strftime("%Y/%m/%d")
+                suspense_df[col] = pd.to_datetime(
+                    suspense_df[col].astype(str),
+                    format="%Y/%m/%d",
+                    errors='coerce'
+                ).dt.strftime("%Y/%m/%d")
 
-        # ✅ Save output file
+        # ✅ Save file
         output_file = "processed_transactions.xlsx"
 
         with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
@@ -190,7 +202,7 @@ th {{
 def download():
     return send_file("processed_transactions.xlsx", as_attachment=True)
 
-# ✅ Render-compatible run
+# ✅ Render-ready config
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
