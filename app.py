@@ -15,7 +15,7 @@ def upload_file():
         all_suspense = []
         total_records = 0
 
-        # ✅ PATTERN (handles spaces, trailing letters)
+        # ✅ Pattern for extracting matter number
         pattern = re.compile(r'([A-Z]{2,3})\s*(\d{9,10})([A-Z]?)')
 
         for file in files:
@@ -23,14 +23,14 @@ def upload_file():
 
             df = pd.read_excel(file, engine="openpyxl")
 
-            # ✅ Format ALL date columns
+            # ✅ CORRECT DATE HANDLING (FIXED)
             for col in df.columns:
                 if "date" in col.lower():
-                    df[col] = pd.to_datetime(df[col]).dt.strftime("%Y/%m/%d")
+                    df[col] = pd.to_datetime(df[col], dayfirst=True, errors='coerce').dt.strftime("%Y/%m/%d")
 
             total_records += len(df)
 
-            # ✅ BANK DETECTION
+            # ✅ Bank detection
             if "4174" in filename:
                 bank_description = "Std B 4174"
             elif "6831" in filename:
@@ -42,7 +42,7 @@ def upload_file():
             else:
                 bank_description = "Unknown Bank"
 
-            # ✅ PROCESS DATA
+            # ✅ Process rows
             for _, row in df.iterrows():
                 description = str(row["Description"]).upper()
 
@@ -52,7 +52,7 @@ def upload_file():
                     prefix = match.group(1)
                     digits = match.group(2)
 
-                    # ✅ RULE: Fix 0 → O only for 2-letter prefix
+                    # ✅ Fix O vs 0 only for 2-letter prefix
                     if len(prefix) == 2 and digits.startswith("0"):
                         digits = "O" + digits[1:]
 
@@ -71,23 +71,23 @@ def upload_file():
         valid_df = pd.DataFrame(all_valid)
         suspense_df = pd.DataFrame(all_suspense)
 
-        # ✅ SAFETY: Format dates again
+        # ✅ SAFE DATE FORMAT AGAIN (for outputs)
         for col in valid_df.columns:
             if "date" in col.lower():
-                valid_df[col] = pd.to_datetime(valid_df[col]).dt.strftime("%Y/%m/%d")
+                valid_df[col] = pd.to_datetime(valid_df[col], dayfirst=True, errors='coerce').dt.strftime("%Y/%m/%d")
 
         for col in suspense_df.columns:
             if "date" in col.lower():
-                suspense_df[col] = pd.to_datetime(suspense_df[col]).dt.strftime("%Y/%m/%d")
+                suspense_df[col] = pd.to_datetime(suspense_df[col], dayfirst=True, errors='coerce').dt.strftime("%Y/%m/%d")
 
-        # ✅ SAVE FILE
+        # ✅ Save output file
         output_file = "processed_transactions.xlsx"
 
         with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
             valid_df.to_excel(writer, sheet_name='Valid', index=False)
             suspense_df.to_excel(writer, sheet_name='Suspense', index=False)
 
-        # ✅ SUMMARY
+        # ✅ Summary
         valid_count = len(valid_df)
         suspense_count = len(suspense_df)
 
@@ -120,10 +120,13 @@ body {{ font-family: Arial; background:#f4f6f9; text-align:center; }}
     padding:10px 20px;
     text-decoration:none;
     border-radius:5px;
+    display:inline-block;
+    margin-top:15px;
 }}
 table {{
     border-collapse:collapse;
     width:100%;
+    margin-top:10px;
 }}
 th, td {{
     border:1px solid #ccc;
@@ -161,6 +164,7 @@ th {{
 {suspense_preview}
 
 <br>
+
 <a href="/download" class="button">Download Combined File</a>
 
 </div>
@@ -186,7 +190,7 @@ th {{
 def download():
     return send_file("processed_transactions.xlsx", as_attachment=True)
 
-# ✅ IMPORTANT FOR RENDER / CLOUD DEPLOYMENT
+# ✅ Render-compatible run
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
