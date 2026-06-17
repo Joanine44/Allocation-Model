@@ -1,39 +1,40 @@
-from flask import Flask, request, send_file, render_template_string, redirect, url_for, session
+from flask import Flask, request, send_file, render_template_string, redirect, session
 import pandas as pd
 import re
 import os
+from datetime import datetime
 
 app = Flask(__name__)
-app.secret_key = "supersecretkey"  # 🔴 Change this in production
+app.secret_key = "CHANGE_THIS_TO_STRONG_SECRET"
 
-# ✅ SIMPLE LOGIN PASSWORD
-PASSWORD = "Duvesco123"   # 🔴 Change this
+# ✅ MULTI-USER LOGIN
+USERS = {
+    "joanine": "Duvesco123",
+    "leani": "Password456"
+}
 
-# ✅ LOGIN ROUTE
+# ✅ LOGIN PAGE
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
+        username = request.form.get("username")
         password = request.form.get("password")
 
-        if password == PASSWORD:
-            session["logged_in"] = True
+        if USERS.get(username) == password:
+            session["user"] = username
             return redirect("/")
         else:
-            return render_template_string("""
-            <h3>Invalid password</h3>
-            <a href="/login">Try again</a>
-            """)
+            return "<h3>Invalid login</h3><a href='/login'>Try again</a>"
 
     return """
-    <html>
-    <body style="font-family: Arial; text-align:center; margin-top:100px;">
-        <h2>Login Required</h2>
+    <html><body style="font-family: Arial; text-align:center; margin-top:100px;">
+        <h2>Login</h2>
         <form method="post">
-            <input type="password" name="password" placeholder="Enter password" required><br><br>
+            <input type="text" name="username" placeholder="Username" required><br><br>
+            <input type="password" name="password" placeholder="Password" required><br><br>
             <input type="submit" value="Login">
         </form>
-    </body>
-    </html>
+    </body></html>
     """
 
 # ✅ LOGOUT
@@ -42,12 +43,11 @@ def logout():
     session.clear()
     return redirect("/login")
 
-# ✅ MAIN ROUTE (PROTECTED)
+# ✅ MAIN APP
 @app.route("/", methods=["GET", "POST"])
 def upload_file():
 
-    # ✅ CHECK LOGIN
-    if not session.get("logged_in"):
+    if "user" not in session:
         return redirect("/login")
 
     if request.method == "POST":
@@ -64,7 +64,7 @@ def upload_file():
             filename = file.filename.lower()
             df = pd.read_excel(file, engine="openpyxl")
 
-            # ✅ FIX DATE FORMAT
+            # ✅ CORRECT DATE FORMAT
             for col in df.columns:
                 if "date" in col.lower():
                     df[col] = pd.to_datetime(
@@ -95,13 +95,14 @@ def upload_file():
                     prefix = match.group(1)
                     digits = match.group(2)
 
+                    # ✅ Fix O vs 0 for 2-letter prefix
                     if len(prefix) == 2 and digits.startswith("0"):
                         digits = "O" + digits[1:]
 
                     row["Matter Number"] = prefix + digits
                     row["Description 1"] = bank_description
-
                     all_valid.append(row.drop(labels=["Description"]))
+
                 else:
                     row["Reason"] = "No valid Matter Number found"
                     all_suspense.append(row)
@@ -109,41 +110,59 @@ def upload_file():
         valid_df = pd.DataFrame(all_valid)
         suspense_df = pd.DataFrame(all_suspense)
 
-        # ✅ SAVE FILE
-        output_file = "processed_transactions.xlsx"
+        # ✅ UNIQUE FILE NAME (no overwrite)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = f"processed_{timestamp}.xlsx"
+
         with pd.ExcelWriter(output_file, engine="openpyxl") as writer:
             valid_df.to_excel(writer, sheet_name="Valid", index=False)
             suspense_df.to_excel(writer, sheet_name="Suspense", index=False)
 
-        valid_preview = valid_df.head(10).to_html(index=False)
-        suspense_preview = suspense_df.head(10).to_html(index=False)
+        # ✅ ✅ AUDIT LOG
+        log_file = "audit_log.xlsx"
+
+        log_data = {
+            "Timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "User": session["user"],
+            "Files Uploaded": len(files),
+            "Total Records": total_records,
+            "Valid Records": len(valid_df),
+            "Suspense Records": len(suspense_df)
+        }
+
+        log_df = pd.DataFrame([log_data])
+
+        if os.path.exists(log_file):
+            existing_log = pd.read_excel(log_file)
+            log_df = pd.concat([existing_log, log_df], ignore_index=True)
+
+        log_df.to_excel(log_file, index=False)
+
+        # ✅ STORE FILE FOR DOWNLOAD
+        session["last_file"] = output_file
 
         return f"""
         <html>
         <body style="font-family: Arial; text-align:center;">
-        <h1>Processing Complete</h1>
+            <h2>Processing Complete</h2>
 
-        <div>Total Records: {total_records}</div>
-        <div>Valid: {len(valid_df)}</div>
-        <div>Suspense: {len(suspense_df)}</div>
+            <p>User: {session['user']}</p>
+            <p>Total Records: {total_records}</p>
+            <p>Valid: {len(valid_df)}</p>
+            <p>Suspense: {len(suspense_df)}</p>
 
-        <h3>Valid Preview</h3>
-        {valid_preview}
-
-        <h3>Suspense Preview</h3>
-        {suspense_preview}
-
-        <br>
-        <a href="/download">Download File</a><br><br>
-        <a href="/logout">Logout</a>
+            <br>
+            <a href="/download">Download File</a><br><br>
+            <a href="/logout">Logout</a>
         </body>
         </html>
         """
 
-    return """
+    return f"""
     <html>
     <body style="font-family: Arial; text-align:center; margin-top:40px;">
         <h1>Bank Allocation Tool</h1>
+        <p>Logged in as: {session['user']}</p>
 
         <form method="post" enctype="multipart/form-data">
             <input type="file" name="files" multiple required><br><br>
@@ -156,11 +175,14 @@ def upload_file():
     </html>
     """
 
+# ✅ DOWNLOAD LAST GENERATED FILE
 @app.route("/download")
 def download():
-    return send_file("processed_transactions.xlsx", as_attachment=True)
+    if "last_file" in session:
+        return send_file(session["last_file"], as_attachment=True)
+    return "No file available"
 
-# ✅ RENDER CONFIG
+# ✅ RENDER START
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
