@@ -8,7 +8,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 app = Flask(__name__)
 app.secret_key = "VERY_STRONG_SECRET_KEY_CHANGE_THIS"
 
-# ✅ USERS (HASHED PASSWORDS)
+# ✅ USERS
 USERS = {
     "joanine": generate_password_hash("Duvesco123"),
     "leani": generate_password_hash("Password456")
@@ -42,13 +42,15 @@ def login():
     </body></html>
     """
 
+
 # ✅ LOGOUT
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/login")
 
-# ✅ MAIN SYSTEM
+
+# ✅ MAIN APP
 @app.route("/", methods=["GET", "POST"])
 def upload_file():
 
@@ -62,34 +64,27 @@ def upload_file():
         all_valid = []
         all_suspense = []
         total_records = 0
+        total_statement_amount = 0  # ✅ NEW
 
-        # ✅ FIXED PATTERN (supports 9-10 digits)
         pattern = re.compile(r'([A-Z]{2,3})\s*(\d{9,10})')
 
         for file in files:
             filename = file.filename.lower()
             df = pd.read_excel(file, engine="openpyxl")
 
-            # ✅ ✅ ROBUST DATE HANDLING (FIXES CAPITEC)
+            # ✅ DATE FIX (ALL BANKS)
             for col in df.columns:
                 if "date" in col.lower():
+                    df[col] = pd.to_datetime(df[col], format="%d/%m/%Y", errors="coerce")
 
-                    # First try SA format
-                    df[col] = pd.to_datetime(
-                        df[col],
-                        format="%d/%m/%Y",
-                        errors="coerce"
-                    )
-
-                    # Fix anything not parsed
                     mask = df[col].isna()
-
-                    df.loc[mask, col] = pd.to_datetime(
-                        df.loc[mask, col],
-                        errors="coerce"
-                    )
+                    df.loc[mask, col] = pd.to_datetime(df.loc[mask, col], errors="coerce")
 
                     df[col] = df[col].dt.strftime("%Y/%m/%d")
+
+            # ✅ ADD TO STATEMENT TOTAL
+            if "Amount" in df.columns:
+                total_statement_amount += df["Amount"].sum()
 
             total_records += len(df)
 
@@ -105,10 +100,8 @@ def upload_file():
             else:
                 bank_description = "Unknown Bank"
 
-            # ✅ IMPROVED EXTRACTION
             for _, row in df.iterrows():
                 description = str(row["Description"]).upper()
-
                 matches = pattern.findall(description)
 
                 if matches:
@@ -119,6 +112,7 @@ def upload_file():
 
                     row["Matter Number"] = prefix + digits
                     row["Description 1"] = bank_description
+
                     all_valid.append(row.drop(labels=["Description"]))
                 else:
                     row["Reason"] = "No valid Matter Number found"
@@ -127,7 +121,15 @@ def upload_file():
         valid_df = pd.DataFrame(all_valid)
         suspense_df = pd.DataFrame(all_suspense)
 
-        # ✅ UNIQUE FILE NAME
+        # ✅ FUNCTION TOTALS
+        valid_amount = valid_df.get("Amount", pd.Series()).sum()
+        suspense_amount = suspense_df.get("Amount", pd.Series()).sum()
+        total_processed_amount = valid_amount + suspense_amount
+
+        # ✅ ✅ RECONCILIATION
+        difference = total_statement_amount - total_processed_amount
+
+        # ✅ FILE OUTPUT
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_file = f"processed_{timestamp}.xlsx"
 
@@ -144,7 +146,10 @@ def upload_file():
             "Files Uploaded": len(files),
             "Total Records": total_records,
             "Valid Records": len(valid_df),
-            "Suspense Records": len(suspense_df)
+            "Suspense Records": len(suspense_df),
+            "Statement Total": total_statement_amount,
+            "Processed Total": total_processed_amount,
+            "Difference": difference
         }
 
         log_df = pd.DataFrame([log_data])
@@ -157,52 +162,37 @@ def upload_file():
 
         session["last_file"] = output_file
 
-        # ✅ DASHBOARD CALCULATIONS
-        valid_count = len(valid_df)
-        suspense_count = len(suspense_df)
-
-        total_amount = valid_df.get("Amount", pd.Series()).sum() + suspense_df.get("Amount", pd.Series()).sum()
-        valid_amount = valid_df.get("Amount", pd.Series()).sum()
-        suspense_amount = suspense_df.get("Amount", pd.Series()).sum()
-
-        valid_preview = valid_df.head(10).to_html(index=False) if not valid_df.empty else "<p>No valid records</p>"
-        suspense_preview = suspense_df.head(10).to_html(index=False) if not suspense_df.empty else "<p>No suspense records</p>"
+        # ✅ DASHBOARD
+        valid_preview = valid_df.head(10).to_html(index=False) if not valid_df.empty else ""
+        suspense_preview = suspense_df.head(10).to_html(index=False) if not suspense_df.empty else ""
 
         return f"""
         <html>
-        <head>
-        <style>
-        body {{ font-family: Arial; background:#f4f6f9; text-align:center; }}
-        .card {{
-            background:white;
-            padding:30px;
-            margin:auto;
-            width:900px;
-            border-radius:10px;
-        }}
-        .valid {{ color:green; }}
-        .suspense {{ color:red; }}
-        table {{ border-collapse:collapse; width:100%; }}
-        th, td {{ border:1px solid #ccc; padding:6px; }}
-        th {{ background:#0078D4; color:white; }}
-        </style>
-        </head>
+        <body style="font-family: Arial; text-align:center;">
 
-        <body>
+        <h2>Processing Summary</h2>
 
-        <h1>Processing Summary</h1>
-
-        <div class="card">
-        <p>User: <b>{session['user']}</b></p>
-        <p>Total Records: <b>{total_records}</b></p>
-        <p class="valid">Valid Records: <b>{valid_count}</b></p>
-        <p class="suspense">Suspense Records: <b>{suspense_count}</b></p>
+        <p>User: {session['user']}</p>
+        <p>Total Records: {total_records}</p>
+        <p style="color:green;">Valid: {len(valid_df)}</p>
+        <p style="color:red;">Suspense: {len(suspense_df)}</p>
 
         <hr>
 
-        <p>Total Amount: <b>R {total_amount:,.2f}</b></p>
-        <p class="valid">Valid Amount: <b>R {valid_amount:,.2f}</b></p>
-        <p class="suspense">Suspense Amount: <b>R {suspense_amount:,.2f}</b></p>
+        <p>Total Amount: R {total_processed_amount:,.2f}</p>
+        <p style="color:green;">Valid Amount: R {valid_amount:,.2f}</p>
+        <p style="color:red;">Suspense Amount: R {suspense_amount:,.2f}</p>
+
+        <hr>
+
+        <h3>Reconciliation Check</h3>
+
+        <p>Statement Total: R {total_statement_amount:,.2f}</p>
+        <p>Processed Total: R {total_processed_amount:,.2f}</p>
+
+        <p style="color:{'green' if difference == 0 else 'red'};">
+        Difference: R {difference:,.2f}
+        </p>
 
         <hr>
 
@@ -216,8 +206,6 @@ def upload_file():
         <a href="/download">Download File</a><br><br>
         <a href="/admin">Admin Dashboard</a> |
         <a href="/logout">Logout</a>
-
-        </div>
 
         </body>
         </html>
@@ -239,6 +227,7 @@ def upload_file():
     </body></html>
     """
 
+
 # ✅ DOWNLOAD
 @app.route("/download")
 def download():
@@ -246,10 +235,10 @@ def download():
         return send_file(session["last_file"], as_attachment=True)
     return "No file available"
 
+
 # ✅ ADMIN DASHBOARD
 @app.route("/admin")
 def admin():
-
     if "user" not in session or session["user"] != ADMIN_USER:
         return "Access denied"
 
@@ -261,12 +250,13 @@ def admin():
     df = pd.read_excel(log_file)
 
     return f"""
-    <html><body style="font-family: Arial;">
+    <html><body>
     <h2>Audit Log</h2>
     {df.to_html(index=False)}
     <br><a href="/">Back</a>
     </body></html>
     """
+
 
 # ✅ RUN
 if __name__ == "__main__":
