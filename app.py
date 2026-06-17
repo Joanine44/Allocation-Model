@@ -14,8 +14,6 @@ USERS = {
     "leani": generate_password_hash("Password456")
 }
 
-ADMIN_USER = "joanine"
-
 # ✅ LOGIN
 @app.route("/login", methods=["GET", "POST"])
 def login():
@@ -26,9 +24,6 @@ def login():
         if u in USERS and check_password_hash(USERS[u], p):
             session["user"] = u
             return redirect("/")
-        else:
-            return "<h3 style='text-align:center;color:red;'>Invalid login</h3>"
-
     return """
     <html>
     <body style="font-family:Arial;background:#f4f6f9;">
@@ -44,17 +39,16 @@ def login():
     </html>
     """
 
-# ✅ LOGOUT
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/login")
 
-# ✅ MAIN
+
+# ✅ MAIN SYSTEM
 @app.route("/", methods=["GET", "POST"])
 def index():
 
-    # ✅ FORCE LOGIN
     if "user" not in session:
         return redirect("/login")
 
@@ -63,141 +57,156 @@ def index():
 
     if request.method == "POST":
 
-        files = request.files.getlist("files")
+        try:
+            files = request.files.getlist("files")
 
-        pattern = re.compile(r'([A-Z]{2,3})\s*(\d{9,10})')
+            pattern = re.compile(r'([A-Z]{2,3})\s*(\d{9,10})')
 
-        valid, suspense = [], []
-        total_records = 0
-        total_statement = 0
-        daily_data = {}
+            valid, suspense = [], []
+            total_records = 0
+            total_statement = 0
+            daily_data = {}
 
-        for file in files:
-            filename = file.filename.lower()
-            df = pd.read_excel(file)
+            for file in files:
+                filename = file.filename.lower()
+                df = pd.read_excel(file)
 
-            # ✅ DATE FIX (ALL BANKS)
-            for col in df.columns:
-                if "date" in col.lower():
-                    df[col] = pd.to_datetime(df[col], format="%d/%m/%Y", errors="coerce")
-                    mask = df[col].isna()
-                    df.loc[mask, col] = pd.to_datetime(df.loc[mask, col], errors="coerce")
-                    df[col] = df[col].dt.strftime("%Y/%m/%d")
+                # ✅ CLEAN COLUMN NAMES
+                df.columns = df.columns.str.strip()
 
-            total_statement += df.get("Amount", pd.Series()).sum()
-            total_records += len(df)
+                # ✅ FIND COLUMNS DYNAMICALLY
+                date_col = next((c for c in df.columns if "date" in c.lower()), None)
+                desc_col = next((c for c in df.columns if "desc" in c.lower()), None)
+                amt_col = next((c for c in df.columns if "amount" in c.lower() or "value" in c.lower()), None)
 
-            # ✅ BANK DETECTION
-            bank = (
-                "Std B 4174" if "4174" in filename else
-                "Std B 6831" if "6831" in filename else
-                "Std B 1039" if "1039" in filename else
-                "Capitec 8868" if "8868" in filename else
-                "Unknown Bank"
-            )
+                if not date_col or not desc_col or not amt_col:
+                    return "<h3>ERROR: File must contain Date, Description and Amount columns</h3>"
 
-            for _, row in df.iterrows():
-                desc = str(row.get("Description", "")).upper()
-                matches = pattern.findall(desc)
+                # ✅ DATE FIX
+                df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+                df[date_col] = df[date_col].dt.strftime("%Y/%m/%d")
 
-                date = row.get("Date")
-                amount = row.get("Amount", 0)
+                total_statement += df[amt_col].sum()
+                total_records += len(df)
 
-                if date:
-                    daily_data[date] = daily_data.get(date, 0) + amount
+                # ✅ BANK DETECTION
+                bank = (
+                    "Std B 4174" if "4174" in filename else
+                    "Std B 6831" if "6831" in filename else
+                    "Std B 1039" if "1039" in filename else
+                    "Capitec 8868" if "8868" in filename else
+                    "Unknown Bank"
+                )
 
-                if matches:
-                    prefix, digits = matches[0]
+                for _, row in df.iterrows():
 
-                    if len(prefix) == 2 and digits.startswith("0"):
-                        digits = "O" + digits[1:]
+                    desc = str(row[desc_col]).upper()
+                    amount = row[amt_col]
+                    date = row[date_col]
 
-                    row["Matter Number"] = prefix + digits
-                    row["Description 1"] = bank
+                    if date:
+                        daily_data[date] = daily_data.get(date, 0) + amount
 
-                    valid.append(row.drop(labels=["Description"]))
-                else:
-                    row["Reason"] = "No valid Matter Number found"
-                    suspense.append(row)
+                    matches = pattern.findall(desc)
 
-        valid_df = pd.DataFrame(valid)
-        suspense_df = pd.DataFrame(suspense)
+                    if matches:
+                        prefix, digits = matches[0]
 
-        valid_amt = valid_df.get("Amount", pd.Series()).sum()
-        suspense_amt = suspense_df.get("Amount", pd.Series()).sum()
-        processed_total = valid_amt + suspense_amt
-        diff = total_statement - processed_total
+                        if len(prefix) == 2 and digits.startswith("0"):
+                            digits = "O" + digits[1:]
 
-        # ✅ SAVE OUTPUT FILE
-        output_file = f"processed_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        with pd.ExcelWriter(output_file) as writer:
-            valid_df.to_excel(writer, "Valid", index=False)
-            suspense_df.to_excel(writer, "Suspense", index=False)
+                        row["Matter Number"] = prefix + digits
+                        row["Description 1"] = bank
+                        valid.append(row)
+                    else:
+                        row["Reason"] = "No valid Matter Number"
+                        suspense.append(row)
 
-        session["file"] = output_file
+            valid_df = pd.DataFrame(valid)
+            suspense_df = pd.DataFrame(suspense)
 
-        # ✅ AUDIT LOG
-        log_file = "audit_log.xlsx"
-        log_data = {
-            "Timestamp": datetime.now(),
-            "User": session["user"],
-            "Records": total_records,
-            "Valid": len(valid_df),
-            "Suspense": len(suspense_df),
-            "Difference": diff
-        }
+            valid_amt = valid_df.get(amt_col, pd.Series()).sum()
+            suspense_amt = suspense_df.get(amt_col, pd.Series()).sum()
 
-        log_df = pd.DataFrame([log_data])
+            processed_total = valid_amt + suspense_amt
+            diff = total_statement - processed_total
 
-        if os.path.exists(log_file):
-            old = pd.read_excel(log_file)
-            log_df = pd.concat([old, log_df], ignore_index=True)
+            # ✅ SAVE FILE
+            output_file = f"processed_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+            with pd.ExcelWriter(output_file) as writer:
+                valid_df.to_excel(writer, "Valid", index=False)
+                suspense_df.to_excel(writer, "Suspense", index=False)
 
-        log_df.to_excel(log_file, index=False)
+            session["file"] = output_file
 
-        # ✅ SUMMARY (CENTERED)
-        summary_html = f"""
-        <div class="card">
-            <h2>Processing Summary</h2>
+            # ✅ AUDIT LOG
+            log_file = "audit_log.xlsx"
+            log_df = pd.DataFrame([{
+                "Timestamp": datetime.now(),
+                "User": session["user"],
+                "Records": total_records,
+                "Valid": len(valid_df),
+                "Suspense": len(suspense_df),
+                "Difference": diff
+            }])
 
-            <p><b>Total Records:</b> {total_records}</p>
-            <p class="green"><b>Valid:</b> {len(valid_df)}</p>
-            <p class="red"><b>Suspense:</b> {len(suspense_df)}</p>
+            if os.path.exists(log_file):
+                old = pd.read_excel(log_file)
+                log_df = pd.concat([old, log_df], ignore_index=True)
 
-            <hr>
+            log_df.to_excel(log_file, index=False)
 
-            <p>Total Amount: R {processed_total:,.2f}</p>
-            <p class="green">Valid: R {valid_amt:,.2f}</p>
-            <p class="red">Suspense: R {suspense_amt:,.2f}</p>
+            # ✅ SUMMARY
+            summary_html = f"""
+            <div class="card">
+                <h2>Processing Summary</h2>
 
-            <hr>
+                <p>Total Records: <b>{total_records}</b></p>
+                <p class="green">Valid: <b>{len(valid_df)}</b></p>
+                <p class="red">Suspense: <b>{len(suspense_df)}</b></p>
 
-            <h3>Reconciliation</h3>
-            <p>Statement: R {total_statement:,.2f}</p>
-            <p>Processed: R {processed_total:,.2f}</p>
-            <p class="{ 'green' if diff==0 else 'red' }"><b>Difference: R {diff:,.2f}</b></p>
-        </div>
-        """
+                <hr>
 
-        # ✅ CHART
-        labels = list(daily_data.keys())
-        values = list(daily_data.values())
+                <p>Total Amount: R {processed_total:,.2f}</p>
+                <p class="green">Valid: R {valid_amt:,.2f}</p>
+                <p class="red">Suspense: R {suspense_amt:,.2f}</p>
 
-        chart_html = f"""
-        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-        <canvas id="chart" style="max-width:600px;margin:20px auto;"></canvas>
-        <script>
-        new Chart(document.getElementById('chart'), {{
-            type:'line',
-            data:{{
-                labels:{labels},
-                datasets:[{{label:'Daily Totals',data:{values},borderColor:'blue'}}]
-            }}
-        }});
-        </script>
-        """
+                <hr>
 
-    # ✅ FINAL PAGE
+                <h3>Reconciliation</h3>
+                <p>Statement: R {total_statement:,.2f}</p>
+                <p>Processed: R {processed_total:,.2f}</p>
+                <p class="{ 'green' if diff==0 else 'red' }">
+                    Difference: R {diff:,.2f}
+                </p>
+            </div>
+            """
+
+            # ✅ GRAPH
+            labels = list(daily_data.keys())
+            values = list(daily_data.values())
+
+            chart_html = f"""
+            https://cdn.jsdelivr.net/npm/chart.js
+            <canvas id="chart" style="max-width:600px;margin:20px auto;"></canvas>
+            <script>
+            new Chart(document.getElementById('chart'), {{
+                type: 'line',
+                data: {{
+                    labels: {labels},
+                    datasets: [{{
+                        label: 'Daily Totals',
+                        data: {values},
+                        borderColor: 'blue'
+                    }}]
+                }}
+            }});
+            </script>
+            """
+
+        except Exception as e:
+            summary_html = f"<p style='color:red;'>ERROR: {str(e)}</p>"
+
     return f"""
     <html>
     <head>
@@ -214,7 +223,6 @@ def index():
         width:220px;
         height:100%;
         background:#0a2540;
-        color:white;
         padding:20px;
     }}
 
@@ -264,6 +272,7 @@ def index():
     <body>
 
     <div class="sidebar">
+
         <div class="logo">
             <img src="/static/logo.png">
         </div>
@@ -271,6 +280,7 @@ def index():
         <a href="/">Dashboard</a>
         <a href="/download">Download</a>
         <a href="/logout">Logout</a>
+
     </div>
 
     <div class="main">
@@ -280,16 +290,15 @@ def index():
             <h1>Bank Allocation System</h1>
 
             <div class="card">
-
                 <form method="post" enctype="multipart/form-data">
                     <input type="file" name="files" multiple required><br><br>
-                    <button style="padding:10px 20px;background:#0078D4;color:white;border:none;border-radius:6px;">Process</button>
+                    <button style="padding:10px 20px;background:#0078D4;color:white;border:none;border-radius:6px;">
+                        Process
+                    </button>
                 </form>
-
             </div>
 
             {summary_html}
-
             {chart_html}
 
         </div>
