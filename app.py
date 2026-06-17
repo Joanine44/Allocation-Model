@@ -6,7 +6,7 @@ from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-app.secret_key = "CHANGE_THIS_SECRET"
+app.secret_key = "CHANGE_THIS_SECRET_KEY"
 
 # ✅ USERS
 USERS = {
@@ -16,30 +16,32 @@ USERS = {
 
 ADMIN_USER = "joanine"
 
-
 # ✅ LOGIN
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        u = request.form["username"]
-        p = request.form["password"]
+        username = request.form.get("username")
+        password = request.form.get("password")
 
-        if u in USERS and check_password_hash(USERS[u], p):
-            session["user"] = u
+        if username in USERS and check_password_hash(USERS[username], password):
+            session["user"] = username
             return redirect("/")
-        return "<h3 style='text-align:center;color:red;'>Invalid login</h3>"
+        else:
+            return "<h3 style='text-align:center;color:red;'>Invalid login</h3>"
 
     return """
-    <html><body style="font-family:Arial;background:#f4f6f9;">
-    <div style="width:350px;margin:120px auto;background:white;padding:30px;border-radius:10px;text-align:center;">
-        <h2>Login</h2>
-        <form method="post">
-            <input name="username" placeholder="Username" required><br><br>
-            <input type="password" name="password" placeholder="Password" required><br><br>
-            <button style="padding:10px 20px;background:#0078D4;color:white;border:none;">Login</button>
-        </form>
-    </div>
-    </body></html>
+    <html>
+    <body style="font-family:Arial;background:#f4f6f9;">
+        <div style="width:350px;margin:120px auto;background:white;padding:30px;border-radius:10px;text-align:center;">
+            <h2>Login</h2>
+            <form method="post">
+                <input name="username" placeholder="Username" required><br><br>
+                <input type="password" name="password" placeholder="Password" required><br><br>
+                <button style="padding:10px 20px;background:#0078D4;color:white;border:none;">Login</button>
+            </form>
+        </div>
+    </body>
+    </html>
     """
 
 # ✅ LOGOUT
@@ -48,11 +50,11 @@ def logout():
     session.clear()
     return redirect("/login")
 
-
-# ✅ MAIN APP
+# ✅ MAIN SYSTEM
 @app.route("/", methods=["GET", "POST"])
 def index():
 
+    # 🔐 FORCE LOGIN
     if "user" not in session:
         return redirect("/login")
 
@@ -85,7 +87,7 @@ def index():
             total_statement += df.get("Amount", pd.Series()).sum()
             total_records += len(df)
 
-            # ✅ BANK TAG
+            # ✅ Bank detection
             bank = (
                 "Std B 4174" if "4174" in filename else
                 "Std B 6831" if "6831" in filename else
@@ -106,12 +108,12 @@ def index():
 
                 if matches:
                     p, d = matches[0]
+
                     if len(p) == 2 and d.startswith("0"):
                         d = "O" + d[1:]
 
                     row["Matter Number"] = p + d
                     row["Description 1"] = bank
-
                     valid.append(row.drop(labels=["Description"]))
                 else:
                     row["Reason"] = "No valid Matter Number"
@@ -126,57 +128,36 @@ def index():
         diff = total_statement - processed_total
 
         # ✅ SAVE FILE
-        filename_out = f"processed_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-        with pd.ExcelWriter(filename_out) as w:
-            valid_df.to_excel(w, "Valid", index=False)
-            suspense_df.to_excel(w, "Suspense", index=False)
+        output_file = f"processed_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        with pd.ExcelWriter(output_file) as writer:
+            valid_df.to_excel(writer, "Valid", index=False)
+            suspense_df.to_excel(writer, "Suspense", index=False)
 
-        session["file"] = filename_out
-
-        # ✅ AUDIT LOG
-        log_file = "audit_log.xlsx"
-        log_data = {
-            "Timestamp": datetime.now(),
-            "User": session["user"],
-            "Records": total_records,
-            "Valid": len(valid_df),
-            "Suspense": len(suspense_df),
-            "Difference": diff
-        }
-
-        log_df = pd.DataFrame([log_data])
-
-        if os.path.exists(log_file):
-            old = pd.read_excel(log_file)
-            log_df = pd.concat([old, log_df], ignore_index=True)
-
-        log_df.to_excel(log_file, index=False)
+        session["file"] = output_file
 
         # ✅ SUMMARY UI
         summary_html = f"""
         <div class="card">
-        <h2>Processing Summary</h2>
+            <h2>Processing Summary</h2>
 
-        <div class="stats">
-            <div><b>{total_records}</b><br>Records</div>
-            <div class="green"><b>{len(valid_df)}</b><br>Valid</div>
-            <div class="red"><b>{len(suspense_df)}</b><br>Suspense</div>
-        </div>
+            <p><b>Total Records:</b> {total_records}</p>
+            <p style="color:green;"><b>Valid:</b> {len(valid_df)}</p>
+            <p style="color:red;"><b>Suspense:</b> {len(suspense_df)}</p>
 
-        <hr>
+            <hr>
 
-        <div class="stats">
-            <div>R {processed_total:,.2f}<br>Total</div>
-            <div class="green">R {valid_amt:,.2f}<br>Valid</div>
-            <div class="red">R {suspense_amt:,.2f}<br>Suspense</div>
-        </div>
+            <p>Total Amount: R {processed_total:,.2f}</p>
+            <p style="color:green;">Valid: R {valid_amt:,.2f}</p>
+            <p style="color:red;">Suspense: R {suspense_amt:,.2f}</p>
 
-        <hr>
+            <hr>
 
-        <h3>Reconciliation</h3>
-        <p>Statement: R {total_statement:,.2f}</p>
-        <p>Processed: R {processed_total:,.2f}</p>
-        <p class="{'green' if diff==0 else 'red'}"><b>Difference: R {diff:,.2f}</b></p>
+            <h3>Reconciliation</h3>
+            <p>Statement: R {total_statement:,.2f}</p>
+            <p>Processed: R {processed_total:,.2f}</p>
+            <p style="color:{'green' if diff == 0 else 'red'};">
+                <b>Difference: R {diff:,.2f}</b>
+            </p>
         </div>
         """
 
@@ -185,7 +166,7 @@ def index():
         values = list(daily_data.values())
 
         chart_html = f"""
-        https://cdn.jsdelivr.net/npm/chart.js
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <canvas id="chart"></canvas>
         <script>
         new Chart(document.getElementById('chart'), {{
@@ -209,29 +190,34 @@ def index():
         background:#0a2540;color:white;padding:20px;
     }}
 
-    .logo img {{ max-width:140px; }}
-
-    .sidebar a {{
-        display:block;color:white;text-decoration:none;
-        margin:10px 0;padding:8px;
+    .logo img {{
+        max-width:140px;
+        display:block;
+        margin:auto;
+        margin-bottom:20px;
     }}
 
-    .sidebar a:hover {{ background:#144066; }}
+    .sidebar a {{
+        display:block;
+        color:white;
+        text-decoration:none;
+        margin:10px 0;
+        padding:10px;
+        border-radius:5px;
+    }}
+
+    .sidebar a:hover {{
+        background:#144066;
+    }}
 
     .main {{ margin-left:240px;padding:20px; }}
 
     .card {{
-        background:white;padding:20px;
-        margin-bottom:20px;border-radius:10px;
+        background:white;
+        padding:20px;
+        border-radius:10px;
+        margin-top:20px;
     }}
-
-    .stats {{
-        display:flex;justify-content:space-around;
-        margin-top:10px;
-    }}
-
-    .green {{ color:green; }}
-    .red {{ color:red; }}
     </style>
     </head>
 
@@ -239,27 +225,30 @@ def index():
 
     <div class="sidebar">
 
+        <!-- ✅ FIXED LOGO -->
         <div class="logo">
-            /static/logo.png
+            <img src="/static/logo.png">
         </div>
 
-        /Dashboard</a>
-        /downloadDownload</a>
-        /logoutLogout</a>
+        <!-- ✅ FIXED LINKS -->
+        <a href="/">Dashboard</a>
+        <a href="/download">Download</a>
+        <a href="/logout">Logout</a>
 
     </div>
 
     <div class="main">
 
-    <h1>Bank Allocation System</h1>
+        <h1>Bank Allocation System</h1>
 
-    <form method="post" enctype="multipart/form-data">
-        <input type="file" name="files" multiple required>
-        <button>Process</button>
-    </form>
+        <form method="post" enctype="multipart/form-data">
+            <input type="file" name="files" multiple required>
+            <button>Process</button>
+        </form>
 
-    {summary_html}
-    {chart_html}
+        {summary_html}
+
+        {chart_html}
 
     </div>
 
