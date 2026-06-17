@@ -227,161 +227,135 @@ def index():
             summary_html = f"<p style='color:red;'>ERROR: {str(e)}</p>"
 
     return f"""
-    <html>
-    <head>
-    <style>
+   <html>
+<head>
+<style>
 
-    body {{
-        margin:0;
-        font-family:Arial;
-        background:#f4f6f9;
-    }}
-
-    .sidebar {{
-        position:fixed;
-        width:220px;
-        height:100%;
-        background:#0a2540;
-        padding:20px;
-    }}
-
-    .logo img {{
-        max-width:140px;
-        display:block;
-        margin:auto;
-        margin-bottom:20px;
-    }}
-
-    .sidebar a {{
-        display:block;
-        color:white;
-        text-decoration:none;
-        padding:10px;
-    }}
-
-    .sidebar a:hover {{
-        background:#144066;
-    }}
-
-    .main {{
-        margin-left:240px;
-        padding:40px;
-    }}
-
-    .content {{
-        max-width:600px;
-        margin:auto;
-        text-align:center;
-    }}
-
-    .card {{
-        background:white;
-        padding:25px;
-        border-radius:10px;
-        margin-top:20px;
-        box-shadow:0 2px 6px rgba(0,0,0,0.1);
-    }}
-
-    .green {{ color:green; }}
-    .red {{ color:red; }}
-
-    </style>
-    </head>
-
-    <body>
-
-    <div class="sidebar">
-
-        <div class="logo">
-            <img src="/static/logo.png">
-        </div>
-
-        <a href="/">Dashboard</a>
-        <a href="/download">Download</a>
-        <a href="/logout">Logout</a>
-
-    </div>
-
-    <div class="main">
-
-        <div class="content">
-
-            <h1>Bank Allocation System</h1>
-
-            <div class="card">
-                
-<form method="post" enctype="multipart/form-data" onsubmit="showLoader()">
-    <input type="file" name="files" multiple required><br><br>
-    <button id="processBtn">Process</button>
-</form>
-
-<br>
-
-<!-- ✅ LOADING SPINNER --><!---align:center; margin-top:20px;">
-<div id="loader" style="display:none; text-align:center; margin-top:20px;">
-    
-    <div style="
-        border:6px solid #f3f3f3;
-        border-top:6px solid #0078D4;
-        border-radius:50%;
-        width:40px;
-        height:40px;
-        animation: spin 1s linear infinite;
-        margin:auto;
-    "></div>
-
-    <p>Processing... Please wait</p>
-</div>
-
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+body {
+    margin:0;
+    font-family:Arial;
+    background:#f4f6f9;
 }
-<br>
 
-<!-- ✅ SHOW DOWNLOAD ONLY AFTER PROCESS -->
-{'''\
-<a href="/download" style="
-    display:inline-block;
-    padding:10px 20px;
-    background:#28a745;
+.sidebar {
+    position:fixed;
+    width:220px;
+    height:100%;
+    background:#0a2540;
+    padding:20px;
+}
+
+.logo img {
+    max-width:140px;
+    display:block;
+    margin:auto;
+    margin-bottom:20px;
+}
+
+.sidebar a {
+    display:block;
     color:white;
     text-decoration:none;
-    border-radius:6px;
-">Download File</a>
-''' if session.get("file") else ""}
+    padding:10px;
+}
+
+.sidebar a:hover {
+    background:#144066;
+}
+
+.main {
+    margin-left:240px;
+    padding:40px;
+}
+
+.content {
+    max-width:600px;
+    margin:auto;
+    text-align:center;
+}
+
+.card {
+    background:white;
+    padding:25px;
+    border-radius:10px;
+    margin-top:20px;
+    box-shadow:0 2px 6px rgba(0,0,0,0.1);
+}
+
+.green { color:green; }
+.red { color:red; }
+
+/* ✅ SPINNER ANIMATION (FIXED LOCATION) */
+@keyframes spin {{
+    0% {{ transform: rotate(0deg); }}
+    100% {{ transform: rotate(360deg); }}
+}}
+
+</style>
+</head>
+
+<body>
+
+<div class="sidebar">
+
+    <div class="logo">
+        <img src="/static/logo.png">
+    </div>
+
+    <a href="/">Dashboard</a>
+    <a href="/download">Download</a>
+    <a href="/logout">Logout</a>
+
+</div>
+
+<div class="main">
+    <div class="content">
+
+        <h1>Bank Allocation System</h1>
+
+        <div class="card">
+
+            <!-- ✅ FORM -->
+            <form method="post" enctype="multipart/form-data" onsubmit="showLoader()">
+                <input type="file" name="files" multiple required><br><br>
+                <button id="processBtn">Process</button>
+            </form>
+
+            <br>
+
+            <!-- ✅ LOADING SPINNER -->
+            <div id="loader" style="display:none; text-align:center; margin-top:20px;">
+                
+                <div style="
+                    border:6px solid #f3f3f3;
+                    border-top:6px solid #0078D4;
+                    border-radius:50%;
+                    width:40px;
+                    height:40px;
+                    animation: spin 1s linear infinite;
+                    margin:auto;
+                "></div>
+
+                <p>Processing... Please wait</p>
 
             </div>
 
-            {summary_html}
-            {chart_html}
-
         </div>
 
     </div>
+</div>
 
-<script>
-function showLoader() {{
-    document.getElementById("loader").style.display = "block";
-
-    // Disable button to prevent multiple clicks
-    document.getElementById("processBtn").disabled = true;
-}}
-</script>
+<!-- ✅ SCRIPT (MUST BE AT BOTTOM) -->
 <script>
 function showLoader() {
-    // Show spinner
     document.getElementById("loader").style.display = "block";
-
-    // Disable process button
     document.getElementById("processBtn").disabled = true;
 }
 </script>
 
-    </body>
-    </html>
-    """
-
+</body>
+</html>
+"""
 # ✅ DOWNLOAD
 @app.route("/download")
 def download():
