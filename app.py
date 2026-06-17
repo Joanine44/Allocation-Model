@@ -309,12 +309,48 @@ def index():
             <h1>Bank Allocation System</h1>
 
             <div class="card">
-                <form method="post" enctype="multipart/form-data">
-                    <input type="file" name="files" multiple required><br><br>
-                    <button style="padding:10px 20px;background:#0078D4;color:white;border:none;border-radius:6px;">
-                        Process
-                    </button>
-                </form>
+                
+<form method="post" enctype="multipart/form-data" onsubmit="showLoader()">
+    <input type="file" name="files" multiple required><br><br>
+    <button id="processBtn">Process</button>
+</form>
+
+<br>
+
+<!-- ✅ LOADING SPINNER --><!---align:center; margin-top:20px;">
+<div id="loader" style="display:none; text-align:center; margin-top:20px;">
+    
+    <div style="
+        border:6px solid #f3f3f3;
+        border-top:6px solid #0078D4;
+        border-radius:50%;
+        width:40px;
+        height:40px;
+        animation: spin 1s linear infinite;
+        margin:auto;
+    "></div>
+
+    <p>Processing... Please wait</p>
+</div>
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+<br>
+
+<!-- ✅ SHOW DOWNLOAD ONLY AFTER PROCESS -->
+{'''\
+<a href="/download" style="
+    display:inline-block;
+    padding:10px 20px;
+    background:#28a745;
+    color:white;
+    text-decoration:none;
+    border-radius:6px;
+">Download File</a>
+''' if session.get("file") else ""}
+
             </div>
 
             {summary_html}
@@ -323,6 +359,24 @@ def index():
         </div>
 
     </div>
+
+<script>
+function showLoader() {{
+    document.getElementById("loader").style.display = "block";
+
+    // Disable button to prevent multiple clicks
+    document.getElementById("processBtn").disabled = true;
+}}
+</script>
+<script>
+function showLoader() {
+    // Show spinner
+    document.getElementById("loader").style.display = "block";
+
+    // Disable process button
+    document.getElementById("processBtn").disabled = true;
+}
+</script>
 
     </body>
     </html>
