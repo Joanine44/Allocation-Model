@@ -3,24 +3,30 @@ import pandas as pd
 import re
 import os
 from datetime import datetime
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
-app.secret_key = "CHANGE_THIS_TO_STRONG_SECRET"
+app.secret_key = "VERY_STRONG_SECRET_KEY_CHANGE_THIS"
 
-# ✅ MULTI-USER LOGIN
+# ✅ SECURE USER STORE (HASHED PASSWORDS)
 USERS = {
-    "joanine": "Duvesco123",
-    "leani": "Password456"
+    "joanine": generate_password_hash("Duvesco123"),
+    "leani": generate_password_hash("Password456")
 }
 
-# ✅ LOGIN PAGE
+# ✅ ADMIN USER
+ADMIN_USER = "joanine"
+
+# ✅ LOGIN
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         username = request.form.get("username")
         password = request.form.get("password")
 
-        if USERS.get(username) == password:
+        stored_password = USERS.get(username)
+
+        if stored_password and check_password_hash(stored_password, password):
             session["user"] = username
             return redirect("/")
         else:
@@ -43,7 +49,7 @@ def logout():
     session.clear()
     return redirect("/login")
 
-# ✅ MAIN APP
+# ✅ MAIN SYSTEM
 @app.route("/", methods=["GET", "POST"])
 def upload_file():
 
@@ -64,7 +70,7 @@ def upload_file():
             filename = file.filename.lower()
             df = pd.read_excel(file, engine="openpyxl")
 
-            # ✅ CORRECT DATE FORMAT
+            # ✅ DATE FIX
             for col in df.columns:
                 if "date" in col.lower():
                     df[col] = pd.to_datetime(
@@ -95,14 +101,12 @@ def upload_file():
                     prefix = match.group(1)
                     digits = match.group(2)
 
-                    # ✅ Fix O vs 0 for 2-letter prefix
                     if len(prefix) == 2 and digits.startswith("0"):
                         digits = "O" + digits[1:]
 
                     row["Matter Number"] = prefix + digits
                     row["Description 1"] = bank_description
                     all_valid.append(row.drop(labels=["Description"]))
-
                 else:
                     row["Reason"] = "No valid Matter Number found"
                     all_suspense.append(row)
@@ -110,7 +114,7 @@ def upload_file():
         valid_df = pd.DataFrame(all_valid)
         suspense_df = pd.DataFrame(all_suspense)
 
-        # ✅ UNIQUE FILE NAME (no overwrite)
+        # ✅ UNIQUE OUTPUT FILE
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_file = f"processed_{timestamp}.xlsx"
 
@@ -118,7 +122,7 @@ def upload_file():
             valid_df.to_excel(writer, sheet_name="Valid", index=False)
             suspense_df.to_excel(writer, sheet_name="Suspense", index=False)
 
-        # ✅ ✅ AUDIT LOG
+        # ✅ AUDIT LOG
         log_file = "audit_log.xlsx"
 
         log_data = {
@@ -138,51 +142,73 @@ def upload_file():
 
         log_df.to_excel(log_file, index=False)
 
-        # ✅ STORE FILE FOR DOWNLOAD
         session["last_file"] = output_file
 
         return f"""
-        <html>
-        <body style="font-family: Arial; text-align:center;">
-            <h2>Processing Complete</h2>
+        <html><body style="text-align:center;">
+        <h2>Processing Complete</h2>
 
-            <p>User: {session['user']}</p>
-            <p>Total Records: {total_records}</p>
-            <p>Valid: {len(valid_df)}</p>
-            <p>Suspense: {len(suspense_df)}</p>
+        <p>User: {session['user']}</p>
+        <p>Total Records: {total_records}</p>
+        <p>Valid: {len(valid_df)}</p>
+        <p>Suspense: {len(suspense_df)}</p>
 
-            <br>
-            <a href="/download">Download File</a><br><br>
-            <a href="/logout">Logout</a>
-        </body>
-        </html>
+        <a href="/download">Download File</a><br><br>
+        <a href="/logout">Logout</a>
+        </body></html>
         """
 
     return f"""
-    <html>
-    <body style="font-family: Arial; text-align:center; margin-top:40px;">
-        <h1>Bank Allocation Tool</h1>
-        <p>Logged in as: {session['user']}</p>
+    <html><body style="text-align:center;">
+    <h1>Bank Allocation Tool</h1>
+    <p>Logged in as: {session['user']}</p>
 
-        <form method="post" enctype="multipart/form-data">
-            <input type="file" name="files" multiple required><br><br>
-            <input type="submit" value="Process Files">
-        </form>
+    <form method="post" enctype="multipart/form-data">
+        <input type="file" name="files" multiple required><br><br>
+        <input type="submit" value="Process">
+    </form>
 
-        <br><br>
-        <a href="/logout">Logout</a>
-    </body>
-    </html>
+    <br>
+    <a href="/admin">Admin Dashboard</a> |
+    <a href="/logout">Logout</a>
+    </body></html>
     """
 
-# ✅ DOWNLOAD LAST GENERATED FILE
+# ✅ DOWNLOAD
 @app.route("/download")
 def download():
     if "last_file" in session:
         return send_file(session["last_file"], as_attachment=True)
     return "No file available"
 
-# ✅ RENDER START
+# ✅ ✅ ADMIN DASHBOARD
+@app.route("/admin")
+def admin():
+
+    if "user" not in session or session["user"] != ADMIN_USER:
+        return "Access denied"
+
+    log_file = "audit_log.xlsx"
+
+    if not os.path.exists(log_file):
+        return "No audit data yet"
+
+    df = pd.read_excel(log_file)
+
+    table = df.to_html(index=False)
+
+    return f"""
+    <html><body style="font-family: Arial;">
+    <h2>Admin Dashboard - Audit Logs</h2>
+
+    {table}
+
+    <br>
+    <a href="/">Back</a>
+    </body></html>
+    """
+
+# ✅ RUN
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
