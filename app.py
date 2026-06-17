@@ -134,8 +134,7 @@ def index():
             # ✅ SAVE FILE
             output_file = f"processed_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
             with pd.ExcelWriter(output_file, engine="openpyxl") as writer:
-
-    sheets_written = False
+            sheets_written = False
 
     if not valid_df.empty:
         valid_df.to_excel(writer, sheet_name="Valid", index=False)
