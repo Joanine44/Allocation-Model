@@ -226,7 +226,7 @@ def index():
         except Exception as e:
             summary_html = f"<p style='color:red;'>ERROR: {str(e)}</p>"
 
-    return f"""
+    return """
    <html>
 <head>
 <style>
@@ -286,10 +286,11 @@ body {
 .red { color:red; }
 
 /* ✅ SPINNER ANIMATION (FIXED LOCATION) */
-@keyframes spin {{
-    0% {{ transform: rotate(0deg); }}
-    100% {{ transform: rotate(360deg); }}
-}}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
 
 </style>
 </head>
