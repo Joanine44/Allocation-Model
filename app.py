@@ -115,44 +115,37 @@ def index():
                         if len(prefix) == 2 and digits.startswith("0"):
                             digits = "O" + digits[1:]
 
-                        row["Matter Number"] = prefix + digits
-                        row["Description 1"] = bank
-                        valid.append(row)
+                        # ✅ CREATE CLEAN ROW
+                        clean_row = row.copy()
+                        clean_row = clean_row[[date_col, amt_col]]
+                        clean_row["Matter Number"] = prefix + digits
+                        clean_row["Description 1"] = bank
+                        valid.append(clean_row)
                     else:
-                        row["Reason"] = "No valid Matter Number"
-                        suspense.append(row)
+                        clean_row = row.copy()
+                        clean_row = clean_row[[date_col, amt_col]]
+                        clean_row["Matter Number"] = ""
+                        clean_row["Description 1"] = bank
+                        clean_row["Reason"] = "No valid Matter Number"
+                        suspense.append(clean_row)
+                # continue processing after rows collected
+                valid_df = pd.DataFrame(valid)
+                suspense_df = pd.DataFrame(suspense)
 
-            valid_df = pd.DataFrame(valid)
-            suspense_df = pd.DataFrame(suspense)
-
-            valid_amt = valid_df.get(amt_col, pd.Series()).sum()
-            suspense_amt = suspense_df.get(amt_col, pd.Series()).sum()
-
-            processed_total = valid_amt + suspense_amt
-            diff = total_statement - processed_total
-
-            # ✅ SAVE FILE
-            output_file = f"processed_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-            with pd.ExcelWriter(output_file, engine="openpyxl") as writer:
-                sheets_written = False
-
+                # ✅ CLEAN STANDARD COLUMN NAMES
                 if not valid_df.empty:
-                    valid_df.to_excel(writer, sheet_name="Valid", index=False)
-                    sheets_written = True
+                    valid_df.columns = ["Date", "Amount", "Matter Number", "Description 1"]
 
                 if not suspense_df.empty:
-                    suspense_df.to_excel(writer, sheet_name="Suspense", index=False)
-                    sheets_written = True
+                    suspense_df.columns = ["Date", "Amount", "Matter Number", "Description 1", "Reason"]
 
-                if not sheets_written:
-                    pd.DataFrame({"Message": ["No data matched your rules"]}).to_excel(
-                        writer, sheet_name="Sheet1", index=False
-                    )
+                valid_amt = valid_df.get(amt_col, pd.Series(dtype=float)).sum()
+                suspense_amt = suspense_df.get(amt_col, pd.Series(dtype=float)).sum()
 
-            # ✅ OUTSIDE the "with"
-            session["file"] = output_file
+                processed_total = valid_amt + suspense_amt
+                diff = total_statement - processed_total
 
-            # ✅ AUDIT LOG
+                # ✅ AUDIT LOG
             log_file = "audit_log.xlsx"
             log_df = pd.DataFrame([{
                 "Timestamp": datetime.now(),
