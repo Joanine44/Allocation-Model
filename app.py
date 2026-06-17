@@ -8,7 +8,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 app = Flask(__name__)
 app.secret_key = "VERY_STRONG_SECRET_KEY_CHANGE_THIS"
 
-# ✅ USERS (SECURE)
+# ✅ USERS (HASHED PASSWORDS)
 USERS = {
     "joanine": generate_password_hash("Duvesco123"),
     "leani": generate_password_hash("Password456")
@@ -29,7 +29,7 @@ def login():
             session["user"] = username
             return redirect("/")
         else:
-            return "<h3>Invalid login</h3>/loginTry again</a>"
+            return "<h3>Invalid login</h3><a href='/login'>Try again</a>"
 
     return """
     <html><body style="font-family: Arial; text-align:center; margin-top:100px;">
@@ -63,20 +63,33 @@ def upload_file():
         all_suspense = []
         total_records = 0
 
-        pattern = re.compile(r'([A-Z]{2,3})\s*(\d{9,10})([A-Z]?)')
+        # ✅ FIXED PATTERN (supports 9-10 digits)
+        pattern = re.compile(r'([A-Z]{2,3})\s*(\d{9,10})')
 
         for file in files:
             filename = file.filename.lower()
             df = pd.read_excel(file, engine="openpyxl")
 
-            # ✅ CORRECT DATE FORMAT (SA FIX)
+            # ✅ ✅ ROBUST DATE HANDLING (FIXES CAPITEC)
             for col in df.columns:
                 if "date" in col.lower():
+
+                    # First try SA format
                     df[col] = pd.to_datetime(
-                        df[col].astype(str),
+                        df[col],
                         format="%d/%m/%Y",
-                        errors='coerce'
-                    ).dt.strftime("%Y/%m/%d")
+                        errors="coerce"
+                    )
+
+                    # Fix anything not parsed
+                    mask = df[col].isna()
+
+                    df.loc[mask, col] = pd.to_datetime(
+                        df.loc[mask, col],
+                        errors="coerce"
+                    )
+
+                    df[col] = df[col].dt.strftime("%Y/%m/%d")
 
             total_records += len(df)
 
@@ -92,13 +105,14 @@ def upload_file():
             else:
                 bank_description = "Unknown Bank"
 
+            # ✅ IMPROVED EXTRACTION
             for _, row in df.iterrows():
                 description = str(row["Description"]).upper()
-                match = pattern.search(description)
 
-                if match:
-                    prefix = match.group(1)
-                    digits = match.group(2)
+                matches = pattern.findall(description)
+
+                if matches:
+                    prefix, digits = matches[0]
 
                     if len(prefix) == 2 and digits.startswith("0"):
                         digits = "O" + digits[1:]
@@ -113,7 +127,7 @@ def upload_file():
         valid_df = pd.DataFrame(all_valid)
         suspense_df = pd.DataFrame(all_suspense)
 
-        # ✅ UNIQUE FILE
+        # ✅ UNIQUE FILE NAME
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_file = f"processed_{timestamp}.xlsx"
 
@@ -143,7 +157,7 @@ def upload_file():
 
         session["last_file"] = output_file
 
-        # ✅ DASHBOARD DATA
+        # ✅ DASHBOARD CALCULATIONS
         valid_count = len(valid_df)
         suspense_count = len(suspense_df)
 
@@ -175,13 +189,14 @@ def upload_file():
         </head>
 
         <body>
+
         <h1>Processing Summary</h1>
 
         <div class="card">
         <p>User: <b>{session['user']}</b></p>
         <p>Total Records: <b>{total_records}</b></p>
-        <p class="valid">Valid: <b>{valid_count}</b></p>
-        <p class="suspense">Suspense: <b>{suspense_count}</b></p>
+        <p class="valid">Valid Records: <b>{valid_count}</b></p>
+        <p class="suspense">Suspense Records: <b>{suspense_count}</b></p>
 
         <hr>
 
@@ -198,11 +213,12 @@ def upload_file():
         {suspense_preview}
 
         <br>
-        /downloadDownload File</a><br><br>
-        /adminAdmin Dashboard</a> |
-        /logoutLogout</a>
+        <a href="/download">Download File</a><br><br>
+        <a href="/admin">Admin Dashboard</a> |
+        <a href="/logout">Logout</a>
 
         </div>
+
         </body>
         </html>
         """
@@ -218,8 +234,8 @@ def upload_file():
     </form>
 
     <br>
-    /adminAdmin Dashboard</a> |
-    /logoutLogout</a>
+    <a href="/admin">Admin Dashboard</a> |
+    <a href="/logout">Logout</a>
     </body></html>
     """
 
@@ -230,7 +246,7 @@ def download():
         return send_file(session["last_file"], as_attachment=True)
     return "No file available"
 
-# ✅ ADMIN
+# ✅ ADMIN DASHBOARD
 @app.route("/admin")
 def admin():
 
@@ -248,7 +264,7 @@ def admin():
     <html><body style="font-family: Arial;">
     <h2>Audit Log</h2>
     {df.to_html(index=False)}
-    /Back</a>
+    <br><a href="/">Back</a>
     </body></html>
     """
 
