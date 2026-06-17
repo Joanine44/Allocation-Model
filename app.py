@@ -134,21 +134,22 @@ def index():
             # ✅ SAVE FILE
             output_file = f"processed_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
             with pd.ExcelWriter(output_file, engine="openpyxl") as writer:
-            sheets_written = False
+                sheets_written = False
 
-    if not valid_df.empty:
-        valid_df.to_excel(writer, sheet_name="Valid", index=False)
-        sheets_written = True
+                if not valid_df.empty:
+                    valid_df.to_excel(writer, sheet_name="Valid", index=False)
+                    sheets_written = True
 
-    if not suspense_df.empty:
-        suspense_df.to_excel(writer, sheet_name="Suspense", index=False)
-        sheets_written = True
+                if not suspense_df.empty:
+                    suspense_df.to_excel(writer, sheet_name="Suspense", index=False)
+                    sheets_written = True
 
-    # ✅ CRITICAL FIX
-    if not sheets_written:
-        pd.DataFrame({"Message": ["No data matched your rules"]}).to_excel(
-            writer, sheet_name="Sheet1", index=False
-        )
+                if not sheets_written:
+                    pd.DataFrame({"Message": ["No data matched your rules"]}).to_excel(
+                        writer, sheet_name="Sheet1", index=False
+                    )
+
+            # ✅ OUTSIDE the "with"
             session["file"] = output_file
 
             # ✅ AUDIT LOG
