@@ -169,6 +169,19 @@ def index():
 
             log_df.to_excel(log_file, index=False)
 
+            valid_preview = ""
+            suspense_preview = ""
+
+            if not valid_df.empty:
+                valid_preview = valid_df.head(10).to_html(index=False)
+            else:
+                valid_preview = "<p>No valid records found</p>"
+
+            if not suspense_df.empty:
+                suspense_preview = suspense_df.head(10).to_html(index=False)
+            else:
+                suspense_preview = "<p>No suspense records found</p>"
+
             # ✅ SUMMARY
             summary_html = f"""
             <div class="card">
