@@ -146,88 +146,89 @@ def index():
                 diff = total_statement - processed_total
 
                 # ✅ AUDIT LOG
-            log_file = "audit_log.xlsx"
-            log_df = pd.DataFrame([{
-                "Timestamp": datetime.now(),
-                "User": session["user"],
-                "Records": total_records,
-                "Valid": len(valid_df),
-                "Suspense": len(suspense_df),
-                "Difference": diff
-            }])
+                log_file = "audit_log.xlsx"
+                log_df = pd.DataFrame([{
+                    "Timestamp": datetime.now(),
+                    "User": session["user"],
+                    "Records": total_records,
+                    "Valid": len(valid_df),
+                    "Suspense": len(suspense_df),
+                    "Difference": diff
+                }])
 
-            if os.path.exists(log_file):
-                old = pd.read_excel(log_file)
-                log_df = pd.concat([old, log_df], ignore_index=True)
+                if os.path.exists(log_file):
+                    old = pd.read_excel(log_file)
+                    log_df = pd.concat([old, log_df], ignore_index=True)
 
-            log_df.to_excel(log_file, index=False)
+                log_df.to_excel(log_file, index=False)
 
-            valid_preview = ""
-            suspense_preview = ""
+                valid_preview = ""
+                suspense_preview = ""
 
-            if not valid_df.empty:
-                valid_preview = valid_df.head(10).to_html(index=False)
-            else:
-                valid_preview = "<p>No valid records found</p>"
+                if not valid_df.empty:
+                    valid_preview = valid_df.head(10).to_html(index=False)
+                else:
+                    valid_preview = "<p>No valid records found</p>"
 
-            if not suspense_df.empty:
-                suspense_preview = suspense_df.head(10).to_html(index=False)
-            else:
-                suspense_preview = "<p>No suspense records found</p>"
+                if not suspense_df.empty:
+                    suspense_preview = suspense_df.head(10).to_html(index=False)
+                else:
+                    suspense_preview = "<p>No suspense records found</p>"
 
-            # ✅ SUMMARY
-            summary_html = f"""
-            <div class="card">
-                <h2>Processing Summary</h2>
+                # ✅ SUMMARY
+                summary_html = f"""
+                <div class="card">
+                    <h2>Processing Summary</h2>
 
-                <p>Total Records: <b>{total_records}</b></p>
-                <p class="green">Valid: <b>{len(valid_df)}</b></p>
-                <p class="red">Suspense: <b>{len(suspense_df)}</b></p>
+                    <p>Total Records: <b>{total_records}</b></p>
+                    <p class="green">Valid: <b>{len(valid_df)}</b></p>
+                    <p class="red">Suspense: <b>{len(suspense_df)}</b></p>
 
-                <hr>
+                    <hr>
 
-                <p>Total Amount: R {processed_total:,.2f}</p>
-                <p class="green">Valid: R {valid_amt:,.2f}</p>
-                <p class="red">Suspense: R {suspense_amt:,.2f}</p>
+                    <p>Total Amount: R {processed_total:,.2f}</p>
+                    <p class="green">Valid: R {valid_amt:,.2f}</p>
+                    <p class="red">Suspense: R {suspense_amt:,.2f}</p>
 
-                <hr>
+                    <hr>
 
-                <h3>Reconciliation</h3>
-                <p>Statement: R {total_statement:,.2f}</p>
-                <p>Processed: R {processed_total:,.2f}</p>
-                <p class="{ 'green' if diff==0 else 'red' }">
-                    Difference: R {diff:,.2f}
-                </p>
-            </div>
-            """
+                    <h3>Reconciliation</h3>
+                    <p>Statement: R {total_statement:,.2f}</p>
+                    <p>Processed: R {processed_total:,.2f}</p>
+                    <p class="{ 'green' if diff==0 else 'red' }">
+                        Difference: R {diff:,.2f}
+                    </p>
+                </div>
+                """
 
-            # ✅ GRAPH
-            labels = list(daily_data.keys())
-            values = list(daily_data.values())
+                # ✅ GRAPH
+                labels = list(daily_data.keys())
+                values = list(daily_data.values())
 
-            chart_html = f"""
-            https://cdn.jsdelivr.net/npm/chart.js
-            <canvas id="chart" style="max-width:600px;margin:20px auto;"></canvas>
-            <script>
-            new Chart(document.getElementById('chart'), {{
-                type: 'line',
-                data: {{
-                    labels: {labels},
-                    datasets: [{{
-                        label: 'Daily Totals',
-                        data: {values},
-                        borderColor: 'blue'
-                    }}]
-                }}
-            }});
-            </script>
-            """
+                chart_html = f"""
+                https://cdn.jsdelivr.net/npm/chart.js
+                <canvas id="chart" style="max-width:600px;margin:20px auto;"></canvas>
+                <script>
+                new Chart(document.getElementById('chart'), {{
+                    type: 'line',
+                    data: {{
+                        labels: {labels},
+                        datasets: [{{
+                            label: 'Daily Totals',
+                            data: {values},
+                            borderColor: 'blue'
+                        }}]
+                    }}
+                }});
+                </script>
+try:
+    ...
 
-        except Exception as e:
-            summary_html = f"<p style='color:red;'>ERROR: {str(e)}</p>"
+except Exception as e:
+    return f"<h2 style='color:red;'>ERROR: {str(e)}</h2>"
 
-    return """
-   <html>
+return """
+<html>
 <head>
 <style>
 
