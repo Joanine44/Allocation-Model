@@ -221,13 +221,18 @@ def index():
                     }}
                 }});
                 </script>
-try:
-    ...
+if request.method == "POST":
 
-except Exception as e:
-    return f"<h2 style='color:red;'>ERROR: {str(e)}</h2>"
+    try:
+        # processing code here
+        ...
 
+    except Exception as e:
+        return f"<h2 style='color:red;'>ERROR: {str(e)}</h2>"
+
+# ✅ OUTSIDE try block
 return """
+
 <html>
 <head>
 <style>
